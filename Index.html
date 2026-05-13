@@ -1,0 +1,879 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Scanner Tiket — Panitia</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #060810;
+    --surface:   #0d1117;
+    --card:      #111827;
+    --border:    #1f2937;
+    --accent:    #e94560;
+    --green:     #10b981;
+    --yellow:    #f59e0b;
+    --text:      #f1f5f9;
+    --muted:     #64748b;
+    --mono:      'Space Mono', monospace;
+    --sans:      'Syne', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── Header ── */
+  header {
+    width: 100%;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .logo-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity:1; transform:scale(1); }
+    50%      { opacity:.5; transform:scale(1.4); }
+  }
+  header h1 { font-size: 17px; font-weight: 800; letter-spacing: .5px; }
+  header span { font-family: var(--mono); font-size: 11px; color: var(--muted);
+                margin-left: auto; }
+
+  /* ── Main layout ── */
+  main {
+    width: 100%;
+    max-width: 960px;
+    padding: 32px 20px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 680px) {
+    main { grid-template-columns: 1fr; }
+  }
+
+  /* ── Card ── */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+  }
+  .card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .card-header h2 { font-size: 13px; font-weight: 800;
+                    text-transform: uppercase; letter-spacing: 2px; }
+  .badge {
+    margin-left: auto;
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 20px;
+    background: rgba(233,69,96,.15);
+    color: var(--accent);
+    border: 1px solid rgba(233,69,96,.3);
+  }
+
+  /* ── Camera ── */
+  .camera-wrap {
+    position: relative;
+    aspect-ratio: 1;
+    background: #000;
+  }
+  #video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .scan-frame {
+    width: 55%;
+    aspect-ratio: 1;
+    position: relative;
+  }
+  .scan-frame::before, .scan-frame::after,
+  .scan-frame > span::before, .scan-frame > span::after {
+    content: '';
+    position: absolute;
+    width: 22px;
+    height: 22px;
+    border-color: var(--accent);
+    border-style: solid;
+  }
+  .scan-frame::before   { top:0;    left:0;  border-width: 3px 0 0 3px; }
+  .scan-frame::after    { top:0;    right:0; border-width: 3px 3px 0 0; }
+  .scan-frame > span::before { bottom:0; left:0;  border-width: 0 0 3px 3px; }
+  .scan-frame > span::after  { bottom:0; right:0; border-width: 0 3px 3px 0; }
+  .scan-line {
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 2s ease-in-out infinite;
+    top: 0;
+  }
+  @keyframes scanline {
+    0%   { top: 0%;   opacity: 0; }
+    10%  { opacity: 1; }
+    90%  { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+
+  /* Camera controls */
+  .cam-controls {
+    padding: 14px 20px;
+    display: flex;
+    gap: 10px;
+  }
+  button {
+    font-family: var(--sans);
+    font-weight: 700;
+    font-size: 13px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 10px 18px;
+    transition: all .2s;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+    flex: 1;
+  }
+  .btn-primary:hover { filter: brightness(1.15); }
+  .btn-secondary {
+    background: var(--border);
+    color: var(--muted);
+  }
+  .btn-secondary:hover { background: #2d3748; color: var(--text); }
+
+  /* Manual input */
+  .manual-wrap { padding: 16px 20px; display: flex; gap: 10px; }
+  input[type="text"] {
+    flex: 1;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 14px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input::placeholder { color: var(--muted); }
+
+  /* ── Result Panel ── */
+  #result-panel { padding: 20px; min-height: 200px; }
+
+  .state-idle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    min-height: 200px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .state-idle svg { opacity: .3; }
+  .state-idle p { font-size: 13px; line-height: 1.7; }
+
+  .result-card {
+    border-radius: 12px;
+    padding: 20px;
+    display: none;
+  }
+  .result-card.show { display: block; }
+
+  .result-card.valid {
+    background: rgba(16,185,129,.08);
+    border: 1px solid rgba(16,185,129,.3);
+  }
+  .result-card.invalid {
+    background: rgba(233,69,96,.08);
+    border: 1px solid rgba(233,69,96,.3);
+  }
+  .result-card.duplicate {
+    background: rgba(245,158,11,.08);
+    border: 1px solid rgba(245,158,11,.3);
+  }
+
+  .result-status {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .status-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .valid   .status-icon { background: rgba(16,185,129,.2); }
+  .invalid .status-icon { background: rgba(233,69,96,.2); }
+  .duplicate .status-icon { background: rgba(245,158,11,.2); }
+
+  .result-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .valid .result-label     { color: var(--green); }
+  .invalid .result-label   { color: var(--accent); }
+  .duplicate .result-label { color: var(--yellow); }
+
+  .result-name {
+    font-size: 20px;
+    font-weight: 800;
+    margin-bottom: 14px;
+  }
+
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .info-item { display: flex; flex-direction: column; gap: 3px; }
+  .info-key  { font-size: 10px; color: var(--muted); text-transform: uppercase;
+               letter-spacing: 1.5px; }
+  .info-val  { font-size: 13px; font-family: var(--mono); color: var(--text); }
+
+  /* ── Log ── */
+  .log-wrap { padding: 0 20px 20px; }
+  #log-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-height: 220px;
+    overflow-y: auto;
+  }
+  #log-list::-webkit-scrollbar { width: 4px; }
+  #log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  .log-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: var(--surface);
+    font-size: 12px;
+    font-family: var(--mono);
+    animation: slideIn .3s ease;
+  }
+  @keyframes slideIn {
+    from { opacity:0; transform:translateY(-6px); }
+    to   { opacity:1; transform:translateY(0); }
+  }
+  .log-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+  .log-dot.ok  { background: var(--green); }
+  .log-dot.err { background: var(--accent); }
+  .log-dot.dup { background: var(--yellow); }
+  .log-time { color: var(--muted); flex-shrink: 0; }
+  .log-name { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Stats bar ── */
+  .stats-bar {
+    display: flex;
+    gap: 6px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--border);
+  }
+  .stat {
+    flex: 1;
+    text-align: center;
+    padding: 10px 6px;
+    border-radius: 8px;
+    background: var(--surface);
+  }
+  .stat-num { font-size: 22px; font-weight: 800; font-family: var(--mono); }
+  .stat-lbl { font-size: 10px; color: var(--muted); text-transform: uppercase;
+              letter-spacing: 1px; margin-top: 2px; }
+  .stat-num.green  { color: var(--green); }
+  .stat-num.red    { color: var(--accent); }
+  .stat-num.yellow { color: var(--yellow); }
+
+  canvas { display: none; }
+</style>
+</head>
+<body>
+
+<!-- Warning: file:// protocol -->
+<div id="https-warning" style="display:none;width:100%;background:#7c2d12;color:#fef3c7;
+  font-size:13px;padding:10px 20px;text-align:center;font-weight:600;">
+  ⚠️ Dibuka dari file lokal — kamera mungkin diblokir browser. 
+  Upload ke hosting atau gunakan ekstensi "Web Server for Chrome" / Live Server di VS Code.
+</div>
+
+<header>
+  <div class="logo-dot"></div>
+  <h1>Scanner Tiket Panitia</h1>
+  <span id="clock">--:--:--</span>
+  <span id="db-status" style="margin-left:12px;font-family:var(--mono);font-size:11px;color:var(--yellow);">Memuat DB...</span>
+  <button onclick="testKoneksiDB()" style="margin-left:10px;font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--muted);cursor:pointer;">🔄 Test DB</button>
+</header>
+
+<main>
+
+  <!-- Kolom kiri: Kamera -->
+  <div>
+    <div class="card">
+      <div class="card-header">
+        <h2>📷 Kamera</h2>
+        <span class="badge" id="cam-status">OFF</span>
+      </div>
+      <div class="camera-wrap">
+        <video id="video" playsinline autoplay muted></video>
+        <canvas id="canvas"></canvas>
+        <div class="scan-overlay">
+          <div class="scan-frame">
+            <span></span>
+            <div class="scan-line"></div>
+          </div>
+        </div>
+      </div>
+      <div class="cam-controls">
+        <button class="btn-primary" id="btn-cam" onclick="toggleCamera()">▶ Mulai Kamera</button>
+        <button class="btn-secondary" onclick="switchCamera()">🔄</button>
+      </div>
+      <div style="padding:0 20px 6px;font-size:12px;color:var(--muted);">
+        Atau masukkan Ticket ID manual:
+      </div>
+      <div class="manual-wrap">
+        <input type="text" id="manual-input" placeholder="EVT-20250621-0001"
+               onkeydown="if(event.key==='Enter') checkManual()">
+        <button class="btn-primary" style="flex:0;" onclick="checkManual()">✓ Cek</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Kolom kanan: Hasil + Log -->
+  <div style="display:flex;flex-direction:column;gap:24px;">
+
+    <!-- Hasil scan -->
+    <div class="card">
+      <div class="card-header">
+        <h2>🎫 Hasil Scan</h2>
+      </div>
+      <div id="result-panel">
+        <div class="state-idle" id="idle-state">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" stroke-width="1.5">
+            <path d="M3 7V5a2 2 0 012-2h2M17 3h2a2 2 0 012 2v2
+                     M21 17v2a2 2 0 01-2 2h-2M7 21H5a2 2 0 01-2-2v-2"/>
+            <rect x="7" y="7" width="4" height="4" rx="1"/>
+            <rect x="13" y="7" width="4" height="4" rx="1"/>
+            <rect x="7" y="13" width="4" height="4" rx="1"/>
+            <path d="M13 13h4v4"/>
+          </svg>
+          <p>Arahkan kamera ke QR Code peserta<br>atau masukkan Ticket ID secara manual.</p>
+        </div>
+
+        <div class="result-card valid" id="res-valid">
+          <div class="result-status">
+            <div class="status-icon">✅</div>
+            <div>
+              <div class="result-label">Tiket Valid</div>
+            </div>
+          </div>
+          <div class="result-name" id="res-name">—</div>
+          <div class="info-grid">
+            <div class="info-item">
+              <span class="info-key">Ticket ID</span>
+              <span class="info-val" id="res-id">—</span>
+            </div>
+            <div class="info-item">
+              <span class="info-key">Email</span>
+              <span class="info-val" id="res-email">—</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="result-card invalid" id="res-invalid">
+          <div class="result-status">
+            <div class="status-icon">❌</div>
+            <div><div class="result-label">Tiket Tidak Dikenali</div></div>
+          </div>
+          <p style="font-size:13px;color:var(--muted);margin-top:8px;">
+            QR Code atau ID tidak ditemukan dalam database. Pastikan tiket valid.
+          </p>
+          <p style="font-family:var(--mono);font-size:12px;margin-top:12px;
+                    color:var(--accent);" id="res-raw">—</p>
+        </div>
+
+        <div class="result-card duplicate" id="res-duplicate">
+          <div class="result-status">
+            <div class="status-icon">⚠️</div>
+            <div><div class="result-label">Tiket Sudah Digunakan</div></div>
+          </div>
+          <div class="result-name" id="res-dup-name">—</div>
+          <p style="font-size:12px;color:var(--yellow);margin-top:4px;">
+            Peserta ini sudah melakukan check-in sebelumnya. Hubungi koordinator jika ini kesalahan.
+          </p>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-bar">
+        <div class="stat">
+          <div class="stat-num green" id="stat-ok">0</div>
+          <div class="stat-lbl">Valid</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num yellow" id="stat-dup">0</div>
+          <div class="stat-lbl">Duplikat</div>
+        </div>
+        <div class="stat">
+          <div class="stat-num red" id="stat-err">0</div>
+          <div class="stat-lbl">Tidak Valid</div>
+        </div>
+      </div>
+      <div style="padding:0 20px 14px;text-align:right;">
+        <button class="btn-secondary" style="font-size:11px;padding:5px 12px;"
+                onclick="resetStats()">🔄 Reset Stats</button>
+      </div>
+    </div>
+
+    <!-- Log aktivitas -->
+    <div class="card">
+      <div class="card-header">
+        <h2>📋 Log Aktivitas</h2>
+        <button class="btn-secondary" style="margin-left:auto;padding:5px 12px;font-size:11px;"
+                onclick="clearLog()">Hapus</button>
+      </div>
+      <div class="log-wrap" style="padding-top:14px;">
+        <ul id="log-list">
+          <li class="log-item">
+            <span class="log-dot ok"></span>
+            <span class="log-time" id="log-init-time">--:--</span>
+            <span class="log-name">Sistem siap. Mulai scan tiket.</span>
+          </li>
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<script>
+// ─── DATABASE LOKAL (isi dari spreadsheet Anda) ───────────
+// Format: { "TICKET_ID": { nama, email, checkedIn: false } }
+// Anda bisa copy-paste dari Google Sheets, atau load dari JSON eksternal.
+// Ganti SHEET_ID di bawah dengan ID Google Sheets kamu
+// Cara ambil SHEET_ID: buka Google Sheets, lihat URL:
+//   https://docs.google.com/spreadsheets/d/SHEET_ID_ADA_DI_SINI/edit
+// Pastikan spreadsheet di-share: Anyone with the link -> Viewer
+const SHEET_ID   = "1_RkgYzokMgyb8AihMiXJLdR8dNw6bvTMzZY0rl50fKo";
+const SHEET_NAME = "test 1 (Jawaban)"; // sesuai nama sheet kamu
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxKS8pk0XLQqu3R0bzfMqy4dexrJJp3BKhkxVNFMnuGJfm700t8mnHx3bUWAgcR_QMd/exec"; // ← paste URL deploy Apps Script di sini
+
+// Nomor kolom di spreadsheet (sama dengan CONFIG di Code.gs)
+const COL = { TICKET_ID: 6, NAMA: 2, EMAIL: 3 };
+
+let DB = {};
+let dbLoaded = false;
+
+async function loadDatabase() {
+  addLog("ok", "Memuat database peserta...");
+  document.getElementById("db-status").textContent = "Memuat...";
+  document.getElementById("db-status").style.color = "var(--yellow)";
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+    const res  = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} — pastikan spreadsheet di-share "Anyone with link"`);
+    const text = await res.text();
+
+    console.log("[DB] Raw response (200 char):", text.substring(0, 200));
+
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\)/);
+    if (!match) throw new Error("Format respons tidak dikenali. Pastikan nama sheet sudah benar: \"" + SHEET_NAME + "\"");
+
+    const json = JSON.parse(match[1]);
+    const rows = json.table.rows;
+
+    if (!rows || rows.length === 0) {
+      addLog("err", "⚠️ Sheet ditemukan tapi tidak ada data.");
+      document.getElementById("db-status").textContent = "0 peserta (kosong)";
+      document.getElementById("db-status").style.color = "var(--yellow)";
+      return;
+    }
+
+    DB = {};
+    rows.forEach((row, i) => {
+      const ticketId = row.c[COL.TICKET_ID - 1]?.v;
+      const nama     = row.c[COL.NAMA - 1]?.v;
+      const email    = row.c[COL.EMAIL - 1]?.v;
+      if (ticketId) {
+        const key = ticketId.toString().trim().toUpperCase();
+        DB[key] = { nama: nama || "-", email: email || "-", checkedIn: false };
+        if (i < 3) console.log(`[DB] Sample baris ${i+1}: key="${key}", nama="${nama}"`);
+      }
+    });
+
+    dbLoaded = true;
+    const count = Object.keys(DB).length;
+    addLog("ok", `✅ Database dimuat: ${count} peserta`);
+    document.getElementById("db-status").textContent = `${count} peserta`;
+    document.getElementById("db-status").style.color = "var(--green)";
+
+    const firstKey = Object.keys(DB)[0];
+    if (firstKey) console.log(`[DB] Contoh Ticket ID pertama: "${firstKey}"`);
+
+  } catch (err) {
+    addLog("err", "❌ Gagal muat database: " + err.message);
+    document.getElementById("db-status").textContent = "❌ Gagal dimuat";
+    document.getElementById("db-status").style.color = "var(--accent)";
+    console.error("[DB] Error detail:", err);
+  }
+}
+
+async function testKoneksiDB() {
+  DB = {};
+  dbLoaded = false;
+  await loadDatabase();
+  if (dbLoaded) {
+    const keys = Object.keys(DB);
+    alert(`✅ Koneksi berhasil!\n\n${keys.length} peserta dimuat.\nContoh Ticket ID:\n${keys.slice(0,5).join("\n")}`);
+  } else {
+    alert("❌ Koneksi gagal. Buka DevTools (F12) → Console untuk detail error.\n\nCek:\n1. Spreadsheet sudah di-share \"Anyone with link\"?\n2. Nama sheet sudah benar?");
+  }
+}
+loadDatabase();
+
+// ─── State ────────────────────────────────────────────────
+let stream       = null;
+let scanning     = false;
+let facingMode   = "environment"; // belakang by default
+// Load stats dari localStorage agar tidak hilang saat refresh
+const _savedStats = localStorage.getItem("scanner_stats");
+let stats = _savedStats ? JSON.parse(_savedStats) : { ok: 0, dup: 0, err: 0 };
+let lastScanned  = "";
+let cooldown     = false;
+
+const video      = document.getElementById("video");
+const canvas     = document.getElementById("canvas");
+const ctx        = canvas.getContext("2d");
+
+// ─── Jam ──────────────────────────────────────────────────
+function updateClock() {
+  const now = new Date();
+  document.getElementById("clock").textContent =
+    now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+setInterval(updateClock, 1000);
+updateClock();
+updateStats(); // tampilkan stats tersimpan saat halaman dibuka
+// Cek apakah dibuka via file:// (kamera tidak akan bekerja)
+if (location.protocol === "file:") {
+  document.getElementById("https-warning").style.display = "block";
+  addLog("err", "⚠️ Dibuka dari file:// — upload ke web hosting agar kamera bisa akses");
+}
+document.getElementById("log-init-time").textContent = new Date().toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+
+// ─── Kamera ───────────────────────────────────────────────
+async function toggleCamera() {
+  if (scanning) {
+    stopCamera();
+  } else {
+    await startCamera();
+  }
+}
+
+// Deteksi apakah browser support BarcodeDetector (native, lebih cepat di Android)
+const hasBarcodeDetector = "BarcodeDetector" in window;
+let barcodeDetector = null;
+if (hasBarcodeDetector) {
+  barcodeDetector = new BarcodeDetector({ formats: ["qr_code"] });
+  console.log("[SCAN] Menggunakan BarcodeDetector API (native)");
+} else {
+  console.log("[SCAN] Menggunakan jsQR (fallback)");
+}
+
+async function startCamera() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode,
+        width:  { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+    video.srcObject = stream;
+    await video.play();
+    scanning = true;
+    document.getElementById("btn-cam").textContent = "⏹ Stop Kamera";
+    document.getElementById("cam-status").textContent = "LIVE";
+    document.getElementById("cam-status").style.background = "rgba(16,185,129,.15)";
+    document.getElementById("cam-status").style.color = "var(--green)";
+
+    // Gunakan BarcodeDetector kalau tersedia, jsQR sebagai fallback
+    if (hasBarcodeDetector) {
+      scanLoopNative();
+    } else {
+      requestAnimationFrame(scanFrameJsQR);
+    }
+  } catch (err) {
+    alert("Kamera tidak dapat diakses: " + err.message + "\n\nPastikan halaman dibuka via HTTPS atau localhost.");
+  }
+}
+
+function stopCamera() {
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  scanning = false;
+  document.getElementById("btn-cam").textContent = "▶ Mulai Kamera";
+  document.getElementById("cam-status").textContent = "OFF";
+  document.getElementById("cam-status").style.background = "";
+  document.getElementById("cam-status").style.color = "";
+}
+
+async function switchCamera() {
+  facingMode = facingMode === "environment" ? "user" : "environment";
+  if (scanning) { stopCamera(); await startCamera(); }
+}
+
+// ── Scan loop: BarcodeDetector (Android Chrome native, jauh lebih akurat) ──
+async function scanLoopNative() {
+  if (!scanning) return;
+  try {
+    if (video.readyState >= 2) {
+      const codes = await barcodeDetector.detect(video);
+      if (codes.length > 0 && !cooldown) {
+        handleScan(codes[0].rawValue);
+      }
+    }
+  } catch (e) {
+    console.warn("[SCAN] BarcodeDetector error:", e);
+  }
+  setTimeout(scanLoopNative, 300); // cek tiap 300ms, hemat baterai
+}
+
+// ── Scan loop: jsQR fallback (untuk browser yang tidak support BarcodeDetector) ──
+function scanFrameJsQR() {
+  if (!scanning) return;
+  if (video.readyState === video.HAVE_ENOUGH_DATA) {
+    canvas.height = video.videoHeight;
+    canvas.width  = video.videoWidth;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const img  = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const code = jsQR(img.data, img.width, img.height, { inversionAttempts: "attemptBoth" });
+    if (code && !cooldown) {
+      handleScan(code.data);
+    }
+  }
+  requestAnimationFrame(scanFrameJsQR);
+}
+
+// ─── Proses scan ──────────────────────────────────────────
+function handleScan(raw) {
+  if (raw === lastScanned) return;
+  lastScanned = raw;
+  cooldown    = true;
+  setTimeout(() => { cooldown = false; lastScanned = ""; }, 3000);
+
+  let ticketId = raw.trim().toUpperCase();
+
+  // Coba parse JSON dari QR payload
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed.id) ticketId = parsed.id.trim().toUpperCase();
+  } catch (_) {}
+
+  console.log("[QR] Raw dari kamera:", JSON.stringify(raw));
+  console.log("[QR] Ticket ID setelah parse:", JSON.stringify(ticketId));
+  console.log("[QR] DB keys saat ini:", Object.keys(DB).slice(0,5));
+  checkTicket(ticketId, ticketId);
+}
+
+function checkManual() {
+  const val = document.getElementById("manual-input").value.trim().toUpperCase();
+  if (!val) return;
+  checkTicket(val, val);
+  document.getElementById("manual-input").value = "";
+}
+
+async function checkTicket(ticketId, rawDisplay) {
+  hideAll();
+
+  if (DB[ticketId] === undefined) {
+    // Tidak ditemukan di DB lokal
+    document.getElementById("res-raw").textContent = rawDisplay;
+    show("res-invalid");
+    addLog("err", `Tidak valid: ${rawDisplay}`);
+    stats.err++;
+    playBeep("error");
+    updateStats();
+    return;
+  }
+
+  // Kirim check-in ke Google Sheets via Web App
+  try {
+    addLog("ok", "Memverifikasi ke server...");
+    const res  = await fetch(SCRIPT_URL, {
+      method: "POST",
+      body:   JSON.stringify({ action: "checkin", ticketId }),
+    });
+    const data = await res.json();
+
+    if (data.ok) {
+      // Valid ✅ — berhasil check-in
+      const p = DB[ticketId];
+      document.getElementById("res-name").textContent  = p.nama;
+      document.getElementById("res-id").textContent    = ticketId;
+      document.getElementById("res-email").textContent = p.email;
+      show("res-valid");
+      addLog("ok", `✓ ${p.nama} — ${ticketId}`);
+      stats.ok++;
+      playBeep("ok");
+
+    } else if (data.reason === "duplicate") {
+      // Duplikat — sudah digunakan (termasuk dari device lain)
+      document.getElementById("res-dup-name").textContent = DB[ticketId].nama;
+      show("res-duplicate");
+      addLog("dup", `Duplikat: ${DB[ticketId].nama}`);
+      stats.dup++;
+      playBeep("warn");
+
+    } else {
+      // Error lainnya
+      document.getElementById("res-raw").textContent = rawDisplay + ` (${data.reason})`;
+      show("res-invalid");
+      addLog("err", `Server error: ${data.reason}`);
+      stats.err++;
+      playBeep("error");
+    }
+
+  } catch (err) {
+    // Fallback offline: pakai status lokal jika server tidak terjangkau
+    addLog("err", "⚠️ Gagal konek server, pakai data lokal: " + err.message);
+    if (DB[ticketId].checkedIn) {
+      document.getElementById("res-dup-name").textContent = DB[ticketId].nama;
+      show("res-duplicate");
+      stats.dup++;
+      playBeep("warn");
+    } else {
+      const p = DB[ticketId];
+      p.checkedIn = true;
+      document.getElementById("res-name").textContent  = p.nama;
+      document.getElementById("res-id").textContent    = ticketId;
+      document.getElementById("res-email").textContent = p.email;
+      show("res-valid");
+      addLog("ok", `✓ ${p.nama} — ${ticketId} (offline)`);
+      stats.ok++;
+      playBeep("ok");
+    }
+  }
+
+  updateStats();
+}
+
+function hideAll() {
+  document.getElementById("idle-state").style.display  = "none";
+  document.getElementById("res-valid").classList.remove("show");
+  document.getElementById("res-invalid").classList.remove("show");
+  document.getElementById("res-duplicate").classList.remove("show");
+}
+function show(id) { document.getElementById(id).classList.add("show"); }
+
+// ─── Stats ────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById("stat-ok").textContent  = stats.ok;
+  document.getElementById("stat-dup").textContent = stats.dup;
+  document.getElementById("stat-err").textContent = stats.err;
+  localStorage.setItem("scanner_stats", JSON.stringify(stats));
+}
+
+// ─── Log ──────────────────────────────────────────────────
+function addLog(type, msg) {
+  const ul   = document.getElementById("log-list");
+  const li   = document.createElement("li");
+  const time = new Date().toLocaleTimeString("id-ID", { hour:"2-digit", minute:"2-digit", second:"2-digit" });
+  li.className = "log-item";
+  li.innerHTML = `
+    <span class="log-dot ${type}"></span>
+    <span class="log-time">${time}</span>
+    <span class="log-name">${msg}</span>`;
+  ul.insertBefore(li, ul.firstChild);
+}
+
+function resetStats() {
+  if (!confirm("Reset semua stats ke 0?")) return;
+  stats = { ok: 0, dup: 0, err: 0 };
+  localStorage.removeItem("scanner_stats");
+  updateStats();
+  addLog("ok", "Stats direset.");
+}
+
+function clearLog() {
+  document.getElementById("log-list").innerHTML = "";
+}
+
+// ─── Beep audio ───────────────────────────────────────────
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let audioCtx;
+function playBeep(type) {
+  try {
+    if (!audioCtx) audioCtx = new AudioCtx();
+    const osc  = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.frequency.value = type === "ok" ? 880 : type === "warn" ? 440 : 220;
+    osc.type = "sine";
+    gain.gain.setValueAtTime(.2, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(.001, audioCtx.currentTime + .3);
+    osc.start(audioCtx.currentTime);
+    osc.stop(audioCtx.currentTime + .3);
+  } catch (_) {}
+}
+
+// ─── IMPORT DATABASE DARI JSON ────────────────────────────
+// Untuk load data dari file JSON eksternal, uncomment:
+/*
+fetch("peserta.json")
+  .then(r => r.json())
+  .then(data => { DB = data; addLog("ok","Database dimuat: "+Object.keys(DB).length+" peserta"); })
+  .catch(() => addLog("err","Gagal load database."));
+*/
+</script>
+</body>
+</html>
